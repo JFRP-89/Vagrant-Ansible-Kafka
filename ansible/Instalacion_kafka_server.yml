@@ -1,0 +1,152 @@
+- hosts: localhost
+  tasks:
+  - name: Instalando curl y which
+    yum:
+      name: curl
+      state: latest
+    yum:
+      name: which
+      state: latest
+
+- hosts: localhost
+  tasks:
+  - name: importando clave desde un repositorio
+    rpm_key:
+      state: present
+      key: https://packages.confluent.io/rpm/5.3/archive.key
+
+- hosts: localhost
+  tasks:
+  - name: Creando el repositorio de confluent
+    lineinfile:
+      path: /etc/yum.repos.d/confluent.repo
+      line: '{{item.To}}'
+      state: present
+    with_items:
+     - {To: '[Confluent.dist]'}
+     - {To: 'name=Confluent repository (dist)'}
+     - {To: 'baseurl=https://packages.confluent.io/rpm/5.3/7'}
+     - {To: 'gpgcheck=1'}
+     - {To: 'gpgkey=https://packages.confluent.io/rpm/5.3/archive.key'}
+     - {To: 'enabled=1'}
+     - {To: ' '}
+     - {To: '[Confluent]'}
+     - {To: 'name=Confluent repository'}
+     - {To: 'baseurl=https://packages.confluent.io/rpm/5.3'}
+     - {To: 'gpgcheck=1'}
+     - {To: 'gpgkey=https://packages.confluent.io/rpm/5.3/archive.key'}
+     - {To: 'enabled=1'}
+
+- hosts: localhost
+  tasks:
+  - name: Instalando la plataforma confluent
+    yum:
+      shell: yum clean all
+    yum:
+      name: confluent-platform-2.12
+      state: latest
+
+- hosts: localhost
+  tasks:
+  - name: Instalando los componentes de la comunidad
+    yum:
+      shell: yum clean all
+    yum:
+      name: confluent-community-2.12
+      state: latest
+
+- hosts: localhost
+  tasks:
+  - name: Modificando las propiedades del zookeeper
+    lineinfile:
+      path: /etc/kafka/zookeeper.properties
+      insertafter: '^maxClientCnxns=0'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+     - {To: 'tickTime=2000'}
+     - {To: 'clientPort=2181'}
+     - {To: 'initLimit=5'}
+     - {To: 'syncLimit=2'}
+     - {To: 'server.1=kafka-server:2888:3888'}
+     - {To: 'enabled=1'}
+     - {To: 'autopurge.snapRetainCount=3'}
+     - {To: 'autopurge.purgeInterval=24'}
+
+- hosts: localhost
+  tasks:
+  - name: Añadiendo la id de la propia máquina
+    lineinfile:
+      path: /var/lib/zookeeper/myid
+      line: 1
+      create: yes
+
+- hosts: localhost
+  tasks:
+  - name: Configurando la conexión del zookeeper
+    lineinfile:
+      path: /etc/kafka/server.properties
+      regexp: '^zookeeper.connect=kafka-server:2181'
+      line: zookeeper.connect=localhost.localdomain:2181
+
+- hosts: localhost
+  tasks:
+  - name: Preparando el listener
+    lineinfile:
+      path: /etc/kafka/server.properties
+      regexp: '^#listeners=PLAINTEXT://:9092'
+      line: listeners=PLAINTEXT://kafka-server:9092
+
+- hosts: localhost
+  tasks:
+  - name: Modificando lineas del centro de control de producción de kafka
+    lineinfile:
+      path: "/etc/confluent-control-center/control-center-production.properties"
+      regexp: '{{item.From}}'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+     - { From: '^#bootstrap.servers=kafka1:9092.*', To: 'bootstrap.servers=localhost:9092'}
+     - { From: '^#zookeeper.connect=zookeeper1:2181.*', To: '#zookeeper.connect=zookeeper1:2181'}
+     - { From: '^#confluent.license=XyZ.*', To: 'confluent.license=community'}
+
+- hosts: localhost
+  tasks:
+  - name: Modificando lineas del reportero de métricas de confluent
+    lineinfile:
+      path: "/etc/kafka/server.properties"
+      regexp: '{{item.From}}'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+     - { From: '^#metric.reporters=io.confluent.metrics.reporter.ConfluentMetricsReporter.*', To: 'metric.reporters=io.confluent.metrics.reporter.ConfluentMetricsReporter'}
+     - { From: '^#confluent.metrics.reporter.bootstrap.servers=localhost:9092.*', To: 'confluent.metrics.reporter.bootstrap.servers=localhost:9092'}
+     - { From: '^#confluent.metrics.reporter.topic.replicas=1.*', To: 'confluent.metrics.reporter.topic.replicas=1'}
+
+- hosts: localhost
+  tasks:
+  - name: Añadiendo conectores finales del producer y consumer
+    lineinfile:
+      path: /etc/kafka/connect-distributed.properties
+      insertafter: '^maxClientCnxns=0'
+      line: '{{item.To}}'
+      state: present
+    with_items:
+     - {To: 'consumer.interceptor.classes=io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor'}
+     - {To: 'producer.interceptor.classes=io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor'}
+
+#- hosts: localhost
+#  tasks:
+#  - name: Iniciando zookeeper
+#    systemd:
+#      state: started
+#      name: confluent-zookeeper
+
+#- hosts: localhost
+#  tasks:
+#  - name: Iniciando kafka
+#    systemd:
+#      state: started
+#      name: confluent-kafka
+
+
